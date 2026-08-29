@@ -1,0 +1,9 @@
+{
+  "name": "price-compare-mvp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Price Compare demo API and static frontend",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
