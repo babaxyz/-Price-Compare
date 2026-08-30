@@ -1,0 +1,27 @@
+{
+  "wishlist": [],
+  "recentSearches": [
+    "iphone",
+    "vivo",
+    "sony",
+    "Samsung S24",
+    "Sony WH-1000XM5"
+  ],
+  "alerts": [
+    {
+      "id": "8fecbc89-1c76-442d-b385-6a5575269d6a",
+      "productId": "macbook-air-m3",
+      "targetPrice": 80000,
+      "createdAt": "2026-08-28T15:48:59.134Z",
+      "demo": true
+    },
+    {
+      "id": "f9f552d4-99b8-441b-89de-ca52fd57a485",
+      "productId": "iphone-16-128",
+      "targetPrice": 65000,
+      "createdAt": "2026-08-28T15:50:58.134Z",
+      "demo": true
+    }
+  ],
+  "comparisons": []
+}
