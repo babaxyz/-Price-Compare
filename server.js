@@ -3,6 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { searchProviders } = require('./providers');
+const { generateComparison } = require('./ai');
 
 const PORT = Number(process.env.PORT) || 4175;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -42,6 +43,18 @@ async function api(req, res, url) {
     const returnedProducts = remoteProducts.length ? remoteProducts : demoProducts;
     return send(res, 200, { query, demo: remoteProducts.length === 0, count: returnedProducts.length, products: returnedProducts, prices: aggregatePrices(remoteProducts), providers: providerResults.map(result => ({ provider: result.provider, enabled: result.enabled, error: result.error || null })), discovery: providerResults.flatMap(result => result.discovery || []) });
   }
+  if (req.method === 'POST' && parts[1] === 'ai' && parts[2] === 'compare') {
+    const input = await body(req);
+    const query = typeof input?.query === 'string' ? input.query.trim().slice(0, 120) : '';
+    if (!query) return send(res, 400, { error: 'query is required' });
+    try {
+      const result = await generateComparison({ query, products: Array.isArray(input.products) ? input.products : [] });
+      return send(res, result.enabled ? 200 : 503, result);
+    } catch (error) {
+      console.error('AI comparison error:', error);
+      return send(res, 502, { enabled: true, error: 'AI comparison is temporarily unavailable' });
+    }
+  }
   if (req.method === 'GET' && parts[1] === 'products' && parts.length === 2) {
     const query = String(url.searchParams.get('q') || '').trim().toLowerCase();
     const category = String(url.searchParams.get('category') || '').toLowerCase();
@@ -60,9 +73,9 @@ async function api(req, res, url) {
   if (req.method === 'POST' && parts[1] === 'recent-searches') { const input = await body(req); const query = typeof input?.query === 'string' ? input.query.trim().slice(0, 80) : ''; if (!query) return send(res, 400, { error: 'query is required' }); store.recentSearches = [query, ...store.recentSearches.filter(item => item.toLowerCase() !== query.toLowerCase())].slice(0, 5); await writeStore(store); return send(res, 201, { searches: store.recentSearches }); }
   if (req.method === 'POST' && parts[1] === 'alerts') { const input = await body(req); const targetPrice = Number(input?.targetPrice); if (!validId(input?.productId) || !products.some(product => product.id === input.productId) || !Number.isFinite(targetPrice) || targetPrice <= 0) return send(res, 400, { error: 'Valid productId and positive targetPrice are required' }); const alert = { id: crypto.randomUUID(), productId: input.productId, targetPrice, createdAt: new Date().toISOString(), demo: true }; store.alerts.push(alert); await writeStore(store); return send(res, 201, { alert }); }
   if (req.method === 'GET' && parts[1] === 'alerts') return send(res, 200, { alerts: store.alerts });
-  if (req.method === 'GET' && parts[1] === 'health') return send(res, 200, { status: 'ok', mode: 'demo', timestamp: new Date().toISOString() });
+  if (req.method === 'GET' && parts[1] === 'health') return send(res, 200, { status: 'ok', mode: process.env.GEMINI_API_KEY ? 'connected' : 'demo', ai: Boolean(process.env.GEMINI_API_KEY), timestamp: new Date().toISOString() });
   return send(res, 404, { error: 'API route not found' });
 }
 
 const server = http.createServer(async (req, res) => { try { const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`); const clientKey = req.socket.remoteAddress || 'unknown'; const now = Date.now(); const recent = rateLimits.get(clientKey) || []; const active = recent.filter(timestamp => now - timestamp < 60_000); if (active.length >= 120) return send(res, 429, { error: 'Too many requests. Please try again shortly.' }); active.push(now); rateLimits.set(clientKey, active); if (url.pathname.startsWith('/api/')) { await api(req, res, url); return; } if (req.method !== 'GET') return send(res, 405, { error: 'Method not allowed' }); const requested = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname); const file = path.resolve(ROOT, `.${requested}`); if ((file !== ROOT && !file.startsWith(`${ROOT}${path.sep}`)) || requested.includes('..')) return send(res, 403, { error: 'Forbidden' }); const content = await fs.readFile(file); res.writeHead(200, { 'Content-Type': MIME_TYPES[path.extname(file)] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer' }); res.end(content); } catch (error) { if (error.code === 'ENOENT') return send(res, 404, { error: 'Not found' }); console.error(error); if (!res.headersSent) send(res, 500, { error: 'Something went wrong. Please try again.' }); } });
-server.listen(PORT, HOST, () => console.log(`Price Compare demo server running at http://${HOST}:${PORT}`));
+server.listen(PORT, HOST, () => console.log(`Price Compare server running at http://${HOST}:${PORT}`));
