@@ -2,7 +2,7 @@ const API = '/api';
 const fallback = { id: 'iphone-16-128', name: 'iPhone 16 128GB', category: 'Mobiles', rating: 4.8, image: 'https://images.unsplash.com/photo-1592286927505-2fdc7eaf6e2b?auto=format&fit=crop&w=900&q=85', stores: [] };
 const $ = (selector) => document.querySelector(selector);
 const money = (value) => Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-IN') : '—';
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>'\"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '\"': '&quot;' }[char]));
 const showToast = (message) => { const toast = $('#toast'); if (!toast) return; toast.textContent = message; toast.classList.add('show'); clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => toast.classList.remove('show'), 2800); };
 let currentProduct = fallback;
 
@@ -89,12 +89,50 @@ async function updateProduct(query) {
     $('#searchStatus').textContent = `${data.count} product${data.count > 1 ? 's' : ''} found · ${data.demo ? 'Sample comparison data' : 'Live merchant data'}`;
     $('#searchStatus').classList.remove('empty');
     await fetch(`${API}/recent-searches`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: cleanQuery }) }).catch(() => {});
+    await requestAiRecommendation(cleanQuery, product);
     showToast(`Found ${data.count} product${data.count > 1 ? 's' : ''}`);
   } catch (error) {
     console.error('Product search error:', error);
     $('#searchStatus').textContent = 'Search service is temporarily unavailable.';
     $('#searchStatus').classList.add('empty');
     showToast('Search failed. Please try again.');
+  }
+}
+
+function ensureAiPanel() {
+  let panel = $('#aiRecommendation');
+  if (panel) return panel;
+  const section = document.createElement('section');
+  section.id = 'aiRecommendation';
+  section.style.cssText = 'margin:24px 0;padding:22px;border:1px solid #dfe5d8;border-radius:20px;background:linear-gradient(135deg,#fbfff5,#f4f8ee);box-shadow:0 8px 30px rgba(25,35,20,.06);';
+  section.innerHTML = '<div style="display:flex;gap:14px;align-items:flex-start"><div style="font-size:24px">✦</div><div style="flex:1"><div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#71805e">AI shopping assistant</div><h3 style="margin:5px 0 8px;font-size:20px">Smart recommendation</h3><div id="aiRecommendationText" style="white-space:pre-wrap;line-height:1.65;color:#394033">Analyzing this product…</div><div id="aiSources" style="margin-top:12px;font-size:12px;color:#697260"></div></div></div>';
+  const compare = $('#compare');
+  if (compare) compare.after(section);
+  return section;
+}
+
+async function requestAiRecommendation(query, product) {
+  const panel = ensureAiPanel();
+  const text = $('#aiRecommendationText');
+  const sources = $('#aiSources');
+  if (!text) return;
+  text.textContent = 'Analyzing price, availability and product details…';
+  if (sources) sources.textContent = '';
+  try {
+    const offers = (product.stores || []).map(store => ({ provider: store.name, name: product.name, price: store.price, availability: store.availability, delivery: store.delivery, url: store.url }));
+    const response = await fetch(`${API}/ai/compare`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ query, products: offers }) });
+    const data = await response.json();
+    if (!response.ok || !data.enabled) {
+      text.textContent = 'AI assistant is not connected yet. Add GEMINI_API_KEY in Vercel Environment Variables to enable it.';
+      return;
+    }
+    text.textContent = data.text || 'No recommendation available.';
+    const chunks = data.groundingMetadata?.groundingChunks || [];
+    const links = chunks.map(chunk => chunk.web?.uri).filter(uri => typeof uri === 'string' && /^https:\/\//.test(uri)).slice(0, 4);
+    if (sources && links.length) sources.innerHTML = `Web sources: ${links.map(uri => `<a href="${escapeHtml(uri)}" target="_blank" rel="noopener noreferrer" style="margin-right:10px">${escapeHtml(new URL(uri).hostname)}</a>`).join('')}`;
+  } catch (error) {
+    console.error('AI recommendation error:', error);
+    text.textContent = 'AI recommendation is temporarily unavailable. The price comparison above still works.';
   }
 }
 
