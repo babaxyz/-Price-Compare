@@ -25,25 +25,38 @@ function withPrices(product) {
   return { ...product, lowestPrice, highestPrice, savings: highestPrice - lowestPrice };
 }
 
+function normalize(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function matchesQuery(product, query) {
+  const q = normalize(query);
+  const haystack = normalize(`${product.name} ${product.category}`);
+  if (!q) return false;
+  if (haystack.includes(q)) return true;
+  const tokens = q.split(' ').filter(Boolean);
+  return tokens.length > 0 && tokens.every(token => haystack.includes(token));
+}
+
 module.exports = (req, res) => {
   res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   const query = String(req.query?.q || '').trim().slice(0, 100);
   if (!query) return res.status(400).json({ error: 'q is required' });
 
-  const matches = products
-    .filter(product => `${product.name} ${product.category}`.toLowerCase().includes(query.toLowerCase()))
-    .map(withPrices);
+  const matches = products.filter(product => matchesQuery(product, query)).map(withPrices);
+  const allStores = matches.flatMap(product => product.stores);
+  const prices = allStores.map(store => store.price).filter(price => Number.isFinite(price));
 
   return res.status(200).json({
     query,
     demo: true,
     count: matches.length,
     products: matches,
-    prices: matches.length ? {
-      lowestPrice: Math.min(...matches.map(p => p.lowestPrice)),
-      highestPrice: Math.max(...matches.map(p => p.highestPrice)),
-      savings: Math.max(...matches.map(p => p.highestPrice)) - Math.min(...matches.map(p => p.lowestPrice))
+    prices: prices.length ? {
+      lowestPrice: Math.min(...prices),
+      highestPrice: Math.max(...prices),
+      savings: Math.max(...prices) - Math.min(...prices)
     } : { lowestPrice: null, highestPrice: null, savings: 0 },
     providers: [
       { provider: 'Amazon', enabled: false, error: null },
