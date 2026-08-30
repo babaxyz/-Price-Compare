@@ -1,0 +1,2 @@
+@import url('./styles.css');
+.search-status{margin:12px 0 0;color:var(--muted);font-size:12px}.search-status.empty{color:var(--orange);font-weight:700}
