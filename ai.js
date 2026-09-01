@@ -4,7 +4,7 @@ async function generateComparison({ query, products }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return { enabled: false, error: 'GEMINI_API_KEY is not configured' };
 
-  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   const safeProducts = Array.isArray(products) ? products.slice(0, 12).map((product) => ({
     provider: String(product.provider || product.name || 'Store').slice(0, 80),
     name: String(product.name || product.title || '').slice(0, 180),
